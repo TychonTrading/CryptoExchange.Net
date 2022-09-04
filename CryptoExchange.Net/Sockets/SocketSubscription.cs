@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 
 namespace CryptoExchange.Net.Sockets
 {
@@ -8,9 +9,10 @@ namespace CryptoExchange.Net.Sockets
     public class SocketSubscription
     {
         /// <summary>
-        /// Subscription id
+        /// Unique subscription id
         /// </summary>
         public int Id { get; }
+
         /// <summary>
         /// Exception event
         /// </summary>
@@ -22,44 +24,64 @@ namespace CryptoExchange.Net.Sockets
         public Action<MessageEvent> MessageHandler { get; set; }
 
         /// <summary>
-        /// Request object
+        /// The request object send when subscribing on the server. Either this or the `Identifier` property should be set
         /// </summary>
         public object? Request { get; set; }
+
         /// <summary>
-        /// Subscription identifier
+        /// The subscription identifier, used instead of a `Request` object to identify the subscription
         /// </summary>
         public string? Identifier { get; set; }
+
         /// <summary>
-        /// Is user subscription or generic
+        /// Whether this is a user subscription or an internal listener
         /// </summary>
         public bool UserSubscription { get; set; }
         
         /// <summary>
-        /// If the subscription has been confirmed
+        /// If the subscription has been confirmed to be subscribed by the server
         /// </summary>
         public bool Confirmed { get; set; }
 
-        private SocketSubscription(int id, object? request, string? identifier, bool userSubscription, Action<MessageEvent> dataHandler)
+        /// <summary>
+        /// Whether authentication is needed for this subscription
+        /// </summary>
+        public bool Authenticated { get; set; }
+
+        /// <summary>
+        /// Whether we're closing this subscription and a socket connection shouldn't be kept open for it
+        /// </summary>
+        public bool Closed { get; set; }
+
+        /// <summary>
+        /// Cancellation token registration, should be disposed when subscription is closed. Used for closing the subscription with 
+        /// a provided cancelation token
+        /// </summary>
+        public CancellationTokenRegistration? CancellationTokenRegistration { get; set; }
+
+        private SocketSubscription(int id, object? request, string? identifier, bool userSubscription, bool authenticated, Action<MessageEvent> dataHandler)
         {
             Id = id;
             UserSubscription = userSubscription;
             MessageHandler = dataHandler;
             Request = request;
             Identifier = identifier;
+            Authenticated = authenticated;
         }
 
         /// <summary>
-        /// Create SocketSubscription for a request
+        /// Create SocketSubscription for a subscribe request
         /// </summary>
         /// <param name="id"></param>
         /// <param name="request"></param>
         /// <param name="userSubscription"></param>
+        /// <param name="authenticated"></param>
         /// <param name="dataHandler"></param>
         /// <returns></returns>
         public static SocketSubscription CreateForRequest(int id, object request, bool userSubscription,
-            Action<MessageEvent> dataHandler)
+            bool authenticated, Action<MessageEvent> dataHandler)
         {
-            return new SocketSubscription(id, request, null, userSubscription, dataHandler);
+            return new SocketSubscription(id, request, null, userSubscription, authenticated, dataHandler);
         }
 
         /// <summary>
@@ -68,12 +90,13 @@ namespace CryptoExchange.Net.Sockets
         /// <param name="id"></param>
         /// <param name="identifier"></param>
         /// <param name="userSubscription"></param>
+        /// <param name="authenticated"></param>
         /// <param name="dataHandler"></param>
         /// <returns></returns>
         public static SocketSubscription CreateForIdentifier(int id, string identifier, bool userSubscription,
-            Action<MessageEvent> dataHandler)
+            bool authenticated, Action<MessageEvent> dataHandler)
         {
-            return new SocketSubscription(id, null, identifier, userSubscription, dataHandler);
+            return new SocketSubscription(id, null, identifier, userSubscription, authenticated, dataHandler);
         }
 
         /// <summary>

@@ -1,5 +1,5 @@
-﻿using System.Collections.Generic;
-using CryptoExchange.Net.Logging;
+﻿using CryptoExchange.Net.Logging;
+using CryptoExchange.Net.Sockets;
 
 namespace CryptoExchange.Net.Interfaces
 {
@@ -11,18 +11,9 @@ namespace CryptoExchange.Net.Interfaces
         /// <summary>
         /// Create a websocket for an url
         /// </summary>
-        /// <param name="log"></param>
-        /// <param name="url"></param>
+        /// <param name="log">The logger</param>
+        /// <param name="parameters">The parameters to use for the connection</param>
         /// <returns></returns>
-        IWebsocket CreateWebsocket(Log log, string url);
-        /// <summary>
-        /// Create a websocket for an url
-        /// </summary>
-        /// <param name="log"></param>
-        /// <param name="url"></param>
-        /// <param name="cookies"></param>
-        /// <param name="headers"></param>
-        /// <returns></returns>
-        IWebsocket CreateWebsocket(Log log, string url, IDictionary<string, string> cookies, IDictionary<string, string> headers);
+        IWebsocket CreateWebsocket(Log log, WebSocketParameters parameters);
     }
 }

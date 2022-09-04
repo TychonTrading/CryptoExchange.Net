@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using CryptoExchange.Net.Authentication;
 using CryptoExchange.Net.Objects;
 using CryptoExchange.Net.Sockets;
 
@@ -11,48 +12,37 @@ namespace CryptoExchange.Net.Interfaces
     public interface ISocketClient: IDisposable
     {
         /// <summary>
-        /// The factory for creating sockets. Used for unit testing
+        /// The options provided for this client
         /// </summary>
-        IWebsocketFactory SocketFactory { get; set; }
+        BaseSocketClientOptions ClientOptions { get; }
 
         /// <summary>
-        /// The time in between reconnect attempts
+        /// Set the API credentials for this client. All Api clients in this client will use the new credentials, regardless of earlier set options.
         /// </summary>
-        TimeSpan ReconnectInterval { get; }
+        /// <param name="credentials">The credentials to set</param>
+        void SetApiCredentials(ApiCredentials credentials);
+
+        /// <summary>
+        /// Incoming kilobytes per second of data
+        /// </summary>
+        public double IncomingKbps { get; }
+
+        /// <summary>
+        /// The current amount of connections to the API from this client. A connection can have multiple subscriptions.
+        /// </summary>
+        public int CurrentConnections { get; }
         
         /// <summary>
-        /// Whether the client should try to auto reconnect when losing connection
+        /// The current amount of subscriptions running from the client
         /// </summary>
-        bool AutoReconnect { get; }
+        public int CurrentSubscriptions { get; }
 
         /// <summary>
-        /// The base address of the API
+        /// Unsubscribe from a stream using the subscription id received when starting the subscription
         /// </summary>
-        string BaseAddress { get; }
-
-        /// <inheritdoc cref="SocketClientOptions.SocketResponseTimeout"/>
-        TimeSpan ResponseTimeout { get; }
-
-        /// <inheritdoc cref="SocketClientOptions.SocketNoDataTimeout"/>
-        TimeSpan SocketNoDataTimeout { get; }
-
-        /// <summary>
-        /// The max amount of concurrent socket connections
-        /// </summary>
-        int MaxSocketConnections { get; }
-
-        /// <inheritdoc cref="SocketClientOptions.SocketSubscriptionsCombineTarget"/>
-        int SocketCombineTarget { get; }
-        /// <inheritdoc cref="SocketClientOptions.MaxReconnectTries"/>
-        int? MaxReconnectTries { get; }
-        /// <inheritdoc cref="SocketClientOptions.MaxResubscribeTries"/>
-        int? MaxResubscribeTries { get; }
-        /// <inheritdoc cref="SocketClientOptions.MaxConcurrentResubscriptionsPerSocket"/>
-        int MaxConcurrentResubscriptionsPerSocket { get; }
-        /// <summary>
-        /// The current kilobytes per second of data being received by all connection from this client, averaged over the last 3 seconds
-        /// </summary>
-        double IncomingKbps { get; }
+        /// <param name="subscriptionId">The id of the subscription to unsubscribe</param>
+        /// <returns></returns>
+        Task UnsubscribeAsync(int subscriptionId);
 
         /// <summary>
         /// Unsubscribe from a stream

@@ -17,16 +17,19 @@ namespace CryptoExchange.Net.UnitTests
         {
             //arrange
             //act
-            var client = new TestSocketClient(new SocketClientOptions("")
+            var client = new TestSocketClient(new TestOptions()
             {
-                BaseAddress = "http://test.address.com",
+                SubOptions = new RestApiClientOptions
+                {
+                    BaseAddress = "http://test.address.com"
+                },
                 ReconnectInterval = TimeSpan.FromSeconds(6)
             });
 
 
             //assert
-            Assert.IsTrue(client.BaseAddress == "http://test.address.com/");
-            Assert.IsTrue(client.ReconnectInterval.TotalSeconds == 6);
+            Assert.IsTrue(client.SubClient.Options.BaseAddress == "http://test.address.com");
+            Assert.IsTrue(client.ClientOptions.ReconnectInterval.TotalSeconds == 6);
         }
 
         [TestCase(true)]
@@ -39,7 +42,7 @@ namespace CryptoExchange.Net.UnitTests
             socket.CanConnect = canConnect;
 
             //act
-            var connectResult = client.ConnectSocketSub(new SocketConnection(client, socket));
+            var connectResult = client.ConnectSocketSub(new SocketConnection(client, null, socket, null));
 
             //assert
             Assert.IsTrue(connectResult.Success == canConnect);
@@ -49,15 +52,15 @@ namespace CryptoExchange.Net.UnitTests
         public void SocketMessages_Should_BeProcessedInDataHandlers()
         {
             // arrange
-            var client = new TestSocketClient(new SocketClientOptions("") { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
+            var client = new TestSocketClient(new TestOptions() { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
             var socket = client.CreateSocket();
             socket.ShouldReconnect = true;
             socket.CanConnect = true;
             socket.DisconnectTime = DateTime.UtcNow;
-            var sub = new SocketConnection(client, socket);
+            var sub = new SocketConnection(client, null, socket, null);
             var rstEvent = new ManualResetEvent(false);
             JToken result = null;
-            sub.AddSubscription(SocketSubscription.CreateForIdentifier(10, "TestHandler", true, (messageEvent) =>
+            sub.AddSubscription(SocketSubscription.CreateForIdentifier(10, "TestHandler", true, false, (messageEvent) =>
             {
                 result = messageEvent.JsonData;
                 rstEvent.Set();
@@ -77,15 +80,15 @@ namespace CryptoExchange.Net.UnitTests
         public void SocketMessages_Should_ContainOriginalDataIfEnabled(bool enabled)
         {
             // arrange
-            var client = new TestSocketClient(new SocketClientOptions("") { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug, OutputOriginalData = enabled });
+            var client = new TestSocketClient(new TestOptions() { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug, OutputOriginalData = enabled });
             var socket = client.CreateSocket();
             socket.ShouldReconnect = true;
             socket.CanConnect = true;
             socket.DisconnectTime = DateTime.UtcNow;
-            var sub = new SocketConnection(client, socket);
+            var sub = new SocketConnection(client, null, socket, null);
             var rstEvent = new ManualResetEvent(false);
             string original = null;
-            sub.AddSubscription(SocketSubscription.CreateForIdentifier(10, "TestHandler", true, (messageEvent) =>
+            sub.AddSubscription(SocketSubscription.CreateForIdentifier(10, "TestHandler", true, false, (messageEvent) =>
             {
                 original = messageEvent.OriginalData;
                 rstEvent.Set();
@@ -100,44 +103,18 @@ namespace CryptoExchange.Net.UnitTests
             Assert.IsTrue(original == (enabled ? "{\"property\": 123}" : null));
         }
 
-        [TestCase]
-        public void DisconnectedSocket_Should_Reconnect()
-        {
-            // arrange
-            bool reconnected = false;
-            var client = new TestSocketClient(new SocketClientOptions("") { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
-            var socket = client.CreateSocket();
-            socket.ShouldReconnect = true;
-            socket.CanConnect = true;
-            socket.DisconnectTime = DateTime.UtcNow;
-            var sub = new SocketConnection(client, socket);
-            sub.ShouldReconnect = true;
-            client.ConnectSocketSub(sub);
-            var rstEvent = new ManualResetEvent(false);
-            sub.ConnectionRestored += (a) =>
-            {
-                reconnected = true;
-                rstEvent.Set();
-            };
-
-            // act
-            socket.InvokeClose();
-            rstEvent.WaitOne(1000);
-
-            // assert
-            Assert.IsTrue(reconnected);
-        }
-
         [TestCase()]
         public void UnsubscribingStream_Should_CloseTheSocket()
         {
             // arrange
-            var client = new TestSocketClient(new SocketClientOptions("") { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
+            var client = new TestSocketClient(new TestOptions() { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
             var socket = client.CreateSocket();
             socket.CanConnect = true;
-            var sub = new SocketConnection(client, socket);
+            var sub = new SocketConnection(client, null, socket, null);
             client.ConnectSocketSub(sub);
-            var ups = new UpdateSubscription(sub, SocketSubscription.CreateForIdentifier(10, "Test", true, (e) => {}));
+            var us = SocketSubscription.CreateForIdentifier(10, "Test", true, false, (e) => { });
+            var ups = new UpdateSubscription(sub, us);
+            sub.AddSubscription(us);
 
             // act
             client.UnsubscribeAsync(ups).Wait();
@@ -150,13 +127,13 @@ namespace CryptoExchange.Net.UnitTests
         public void UnsubscribingAll_Should_CloseAllSockets()
         {
             // arrange
-            var client = new TestSocketClient(new SocketClientOptions("") { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
+            var client = new TestSocketClient(new TestOptions() { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
             var socket1 = client.CreateSocket();
             var socket2 = client.CreateSocket();
             socket1.CanConnect = true;
             socket2.CanConnect = true;
-            var sub1 = new SocketConnection(client, socket1);
-            var sub2 = new SocketConnection(client, socket2);
+            var sub1 = new SocketConnection(client, null, socket1, null);
+            var sub2 = new SocketConnection(client, null, socket2, null);
             client.ConnectSocketSub(sub1);
             client.ConnectSocketSub(sub2);
 
@@ -172,10 +149,10 @@ namespace CryptoExchange.Net.UnitTests
         public void FailingToConnectSocket_Should_ReturnError()
         {
             // arrange
-            var client = new TestSocketClient(new SocketClientOptions("") { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
+            var client = new TestSocketClient(new TestOptions() { ReconnectInterval = TimeSpan.Zero, LogLevel = LogLevel.Debug });
             var socket = client.CreateSocket();
             socket.CanConnect = false;
-            var sub = new SocketConnection(client, socket);
+            var sub = new SocketConnection(client, null, socket, null);
 
             // act
             var connectResult = client.ConnectSocketSub(sub);

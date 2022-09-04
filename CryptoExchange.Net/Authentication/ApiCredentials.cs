@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 namespace CryptoExchange.Net.Authentication
 {
     /// <summary>
-    /// Api credentials info
+    /// Api credentials, used to sign requests accessing private endpoints
     /// </summary>
     public class ApiCredentials: IDisposable
     {
@@ -67,9 +67,10 @@ namespace CryptoExchange.Net.Authentication
         /// Copy the credentials
         /// </summary>
         /// <returns></returns>
-        public ApiCredentials Copy()
+        public virtual ApiCredentials Copy()
         {
             if (PrivateKey == null)
+                // Use .GetString() to create a copy of the SecureString
                 return new ApiCredentials(Key!.GetString(), Secret!.GetString());
             else
                 return new ApiCredentials(PrivateKey!.Copy());
