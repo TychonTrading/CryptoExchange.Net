@@ -1,87 +1,135 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using CryptoExchange.Net.Authentication;
+using CryptoExchange.Net.Clients;
+using CryptoExchange.Net.Converters.MessageParsing;
 using CryptoExchange.Net.Interfaces;
-using CryptoExchange.Net.Logging;
 using CryptoExchange.Net.Objects;
+using CryptoExchange.Net.Objects.Options;
+using CryptoExchange.Net.Objects.Sockets;
 using CryptoExchange.Net.Sockets;
+using CryptoExchange.Net.UnitTests.TestImplementations.Sockets;
+using Microsoft.Extensions.Logging;
 using Moq;
-using Newtonsoft.Json.Linq;
+using CryptoExchange.Net.Testing.Implementations;
+using CryptoExchange.Net.SharedApis;
+using Microsoft.Extensions.Options;
 
 namespace CryptoExchange.Net.UnitTests.TestImplementations
 {
-    public class TestSocketClient: BaseSocketClient
+    internal class TestSocketClient: BaseSocketClient
     {
         public TestSubSocketClient SubClient { get; }
 
-        public TestSocketClient() : this(new TestOptions())
+        /// <summary>
+        /// Create a new instance of KucoinSocketClient
+        /// </summary>
+        /// <param name="optionsFunc">Configure the options to use for this client</param>
+        public TestSocketClient(Action<TestSocketOptions> optionsDelegate = null)
+            : this(Options.Create(ApplyOptionsDelegate(optionsDelegate)), null)
         {
         }
 
-        public TestSocketClient(TestOptions exchangeOptions) : base("test", exchangeOptions)
+        public TestSocketClient(IOptions<TestSocketOptions> options, ILoggerFactory loggerFactory = null) : base(loggerFactory, "Test")
         {
-            SubClient = new TestSubSocketClient(exchangeOptions, exchangeOptions.SubOptions);
-            SocketFactory = new Mock<IWebsocketFactory>().Object;
-            Mock.Get(SocketFactory).Setup(f => f.CreateWebsocket(It.IsAny<Log>(), It.IsAny<WebSocketParameters>())).Returns(new TestSocket());
+            Initialize(options.Value);
+
+            SubClient = AddApiClient(new TestSubSocketClient(options.Value, options.Value.SubOptions));
+            SubClient.SocketFactory = new Mock<IWebsocketFactory>().Object;
+            Mock.Get(SubClient.SocketFactory).Setup(f => f.CreateWebsocket(It.IsAny<ILogger>(), It.IsAny<WebSocketParameters>())).Returns(new TestSocket("https://test.com"));
         }
 
         public TestSocket CreateSocket()
         {
-            Mock.Get(SocketFactory).Setup(f => f.CreateWebsocket(It.IsAny<Log>(), It.IsAny<WebSocketParameters>())).Returns(new TestSocket());
-            return (TestSocket)CreateSocket("https://localhost:123/");
+            Mock.Get(SubClient.SocketFactory).Setup(f => f.CreateWebsocket(It.IsAny<ILogger>(), It.IsAny<WebSocketParameters>())).Returns(new TestSocket("https://test.com"));
+            return (TestSocket)SubClient.CreateSocketInternal("https://localhost:123/");
         }
+                
+    }
 
-        public CallResult<bool> ConnectSocketSub(SocketConnection sub)
-        {
-            return ConnectSocketAsync(sub).Result;
-        }
+    public class TestEnvironment : TradeEnvironment
+    {
+        public string TestAddress { get; }
 
-        protected internal override bool HandleQueryResponse<T>(SocketConnection s, object request, JToken data, out CallResult<T> callResult)
+        public TestEnvironment(string name, string url) : base(name)
         {
-            throw new NotImplementedException();
-        }
-
-        protected internal override bool HandleSubscriptionResponse(SocketConnection s, SocketSubscription subscription, object request, JToken message,
-            out CallResult<object> callResult)
-        {
-            throw new NotImplementedException();
-        }
-
-        protected internal override bool MessageMatchesHandler(SocketConnection s, JToken message, object request)
-        {
-            throw new NotImplementedException();
-        }
-
-        protected internal override bool MessageMatchesHandler(SocketConnection s, JToken message, string identifier)
-        {
-            return true;
-        }
-
-        protected internal override Task<CallResult<bool>> AuthenticateSocketAsync(SocketConnection s)
-        {
-            throw new NotImplementedException();
-        }
-
-        protected internal override Task<bool> UnsubscribeAsync(SocketConnection connection, SocketSubscription s)
-        {
-            throw new NotImplementedException();
+            TestAddress = url;
         }
     }
 
-    public class TestOptions: BaseSocketClientOptions
+    public class TestSocketOptions: SocketExchangeOptions<TestEnvironment>
     {
-        public ApiClientOptions SubOptions { get; set; } = new ApiClientOptions();
+        public static TestSocketOptions Default = new TestSocketOptions
+        {
+            Environment = new TestEnvironment("Live", "https://test.test")
+        };
+
+        /// <summary>
+        /// ctor
+        /// </summary>
+        public TestSocketOptions()
+        {
+            Default?.Set(this);
+        }
+
+        public SocketApiOptions SubOptions { get; set; } = new SocketApiOptions();
+
+        internal TestSocketOptions Set(TestSocketOptions targetOptions)
+        {
+            targetOptions = base.Set<TestSocketOptions>(targetOptions);
+            targetOptions.SubOptions = SubOptions.Set(targetOptions.SubOptions);
+            return targetOptions;
+        }
     }
 
     public class TestSubSocketClient : SocketApiClient
     {
+        private MessagePath _channelPath = MessagePath.Get().Property("channel");
+        private MessagePath _actionPath = MessagePath.Get().Property("action");
+        private MessagePath _topicPath = MessagePath.Get().Property("topic");
 
-        public TestSubSocketClient(BaseClientOptions options, ApiClientOptions apiOptions): base(options, apiOptions)
+        public Subscription TestSubscription { get; private set; } = null;
+
+        public TestSubSocketClient(TestSocketOptions options, SocketApiOptions apiOptions) : base(new TraceLogger(), options.Environment.TestAddress, options, apiOptions)
         {
 
         }
 
+        /// <inheritdoc />
+        public override string FormatSymbol(string baseAsset, string quoteAsset, TradingMode futuresType, DateTime? deliverDate = null) => $"{baseAsset.ToUpperInvariant()}{quoteAsset.ToUpperInvariant()}";
+
+        internal IWebsocket CreateSocketInternal(string address)
+        {
+            return CreateSocket(address);
+        }
+
         protected override AuthenticationProvider CreateAuthenticationProvider(ApiCredentials credentials)
             => new TestAuthProvider(credentials);
+
+        public CallResult ConnectSocketSub(SocketConnection sub)
+        {
+            return ConnectSocketAsync(sub).Result;
+        }
+
+        public override string GetListenerIdentifier(IMessageAccessor message)
+        {
+            if (!message.IsJson)
+            {
+                return "topic";
+            }
+
+            var id = message.GetValue<string>(_channelPath);
+            id ??= message.GetValue<string>(_topicPath);
+
+            return message.GetValue<string>(_actionPath) + "-" + id;
+        }
+
+        public Task<CallResult<UpdateSubscription>> SubscribeToSomethingAsync(string channel, Action<DataEvent<string>> onUpdate, CancellationToken ct)
+        {
+            TestSubscription = new TestSubscriptionWithResponseCheck<string>(channel, onUpdate);
+            return SubscribeAsync(TestSubscription, ct);
+        }        
     }
 }

@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
-using CryptoExchange.Net.Authentication;
-using CryptoExchange.Net.Objects;
-using CryptoExchange.Net.Sockets;
+using CryptoExchange.Net.Objects.Options;
+using CryptoExchange.Net.Objects.Sockets;
 
 namespace CryptoExchange.Net.Interfaces
 {
@@ -12,15 +11,14 @@ namespace CryptoExchange.Net.Interfaces
     public interface ISocketClient: IDisposable
     {
         /// <summary>
-        /// The options provided for this client
+        /// The exchange name
         /// </summary>
-        BaseSocketClientOptions ClientOptions { get; }
+        string Exchange { get; }
 
         /// <summary>
-        /// Set the API credentials for this client. All Api clients in this client will use the new credentials, regardless of earlier set options.
+        /// The options provided for this client
         /// </summary>
-        /// <param name="credentials">The credentials to set</param>
-        void SetApiCredentials(ApiCredentials credentials);
+        ExchangeOptions ClientOptions { get; }
 
         /// <summary>
         /// Incoming kilobytes per second of data

@@ -1,89 +1,78 @@
 using System;
-using System.Collections.Generic;
-using System.Net.Http;
 using CryptoExchange.Net.Authentication;
+using CryptoExchange.Net.Interfaces;
 using CryptoExchange.Net.Objects;
+using CryptoExchange.Net.Objects.Options;
+using CryptoExchange.Net.SharedApis;
+using Microsoft.Extensions.Logging;
 
-namespace CryptoExchange.Net
+namespace CryptoExchange.Net.Clients
 {
     /// <summary>
     /// Base API for all API clients
     /// </summary>
-    public abstract class BaseApiClient: IDisposable
+    public abstract class BaseApiClient : IDisposable, IBaseApiClient
     {
-        private ApiCredentials? _apiCredentials;
-        private AuthenticationProvider? _authenticationProvider;
-        private bool _created;
-        private bool _disposing;
+        /// <summary>
+        /// Logger
+        /// </summary>
+        protected ILogger _logger;
+
+        /// <summary>
+        /// If we are disposing
+        /// </summary>
+        protected bool _disposing;
 
         /// <summary>
         /// The authentication provider for this API client. (null if no credentials are set)
         /// </summary>
-        public AuthenticationProvider? AuthenticationProvider
-        {
-            get 
-            {
-                if (!_created && !_disposing && _apiCredentials != null)
-                {
-                    _authenticationProvider = CreateAuthenticationProvider(_apiCredentials);
-                    _created = true;
-                }
-
-                return _authenticationProvider;
-            }
-        }
+        public AuthenticationProvider? AuthenticationProvider { get; private set; }
 
         /// <summary>
-        /// Where to put the parameters for requests with different Http methods
+        /// The environment this client communicates to
         /// </summary>
-        public Dictionary<HttpMethod, HttpMethodParameterPosition> ParameterPositions { get; set; } = new Dictionary<HttpMethod, HttpMethodParameterPosition>
-        {
-            { HttpMethod.Get, HttpMethodParameterPosition.InUri },
-            { HttpMethod.Post, HttpMethodParameterPosition.InBody },
-            { HttpMethod.Delete, HttpMethodParameterPosition.InBody },
-            { HttpMethod.Put, HttpMethodParameterPosition.InBody }
-        };
+        public string BaseAddress { get; }
 
         /// <summary>
-        /// Request body content type
+        /// Output the original string data along with the deserialized object
         /// </summary>
-        public RequestBodyFormat requestBodyFormat = RequestBodyFormat.Json;
+        public bool OutputOriginalData { get; }
 
         /// <summary>
-        /// Whether or not we need to manually parse an error instead of relying on the http status code
+        /// Whether or not API credentials have been configured for this client. Does not check the credentials are actually valid.
         /// </summary>
-        public bool manualParseError = false;
+        public bool Authenticated => ApiOptions.ApiCredentials != null || ClientOptions.ApiCredentials != null;
 
         /// <summary>
-        /// How to serialize array parameters when making requests
+        /// Api options
         /// </summary>
-        public ArrayParametersSerialization arraySerialization = ArrayParametersSerialization.Array;
+        public ApiOptions ApiOptions { get; }
 
         /// <summary>
-        /// What request body should be set when no data is send (only used in combination with postParametersPosition.InBody)
+        /// Client Options
         /// </summary>
-        public string requestBodyEmptyContent = "{}";
-
-        /// <summary>
-        /// The base address for this API client
-        /// </summary>
-        internal protected string BaseAddress { get; }
-
-        /// <summary>
-        /// Api client options
-        /// </summary>
-        internal ApiClientOptions Options { get; }
+        public ExchangeOptions ClientOptions { get; }
 
         /// <summary>
         /// ctor
         /// </summary>
-        /// <param name="options">Client options</param>
-        /// <param name="apiOptions">Api client options</param>
-        protected BaseApiClient(BaseClientOptions options, ApiClientOptions apiOptions)
+        /// <param name="logger">Logger</param>
+        /// <param name="outputOriginalData">Should data from this client include the orginal data in the call result</param>
+        /// <param name="baseAddress">Base address for this API client</param>
+        /// <param name="apiCredentials">Api credentials</param>
+        /// <param name="clientOptions">Client options</param>
+        /// <param name="apiOptions">Api options</param>
+        protected BaseApiClient(ILogger logger, bool outputOriginalData, ApiCredentials? apiCredentials, string baseAddress, ExchangeOptions clientOptions, ApiOptions apiOptions)
         {
-            Options = apiOptions;
-            _apiCredentials = apiOptions.ApiCredentials?.Copy() ?? options.ApiCredentials?.Copy();
-            BaseAddress = apiOptions.BaseAddress;
+            _logger = logger;
+
+            ClientOptions = clientOptions;
+            ApiOptions = apiOptions;
+            OutputOriginalData = outputOriginalData;
+            BaseAddress = baseAddress;
+
+            if (apiCredentials != null)
+                AuthenticationProvider = CreateAuthenticationProvider(apiCredentials.Copy());
         }
 
         /// <summary>
@@ -94,21 +83,22 @@ namespace CryptoExchange.Net
         protected abstract AuthenticationProvider CreateAuthenticationProvider(ApiCredentials credentials);
 
         /// <inheritdoc />
-        public void SetApiCredentials(ApiCredentials credentials)
+        public abstract string FormatSymbol(string baseAsset, string quoteAsset, TradingMode tradingMode, DateTime? deliverDate = null);
+
+        /// <inheritdoc />
+        public void SetApiCredentials<T>(T credentials) where T : ApiCredentials
         {
-            _apiCredentials = credentials?.Copy();
-            _created = false;
-            _authenticationProvider = null;
+            ApiOptions.ApiCredentials = credentials;
+            if (credentials != null)
+                AuthenticationProvider = CreateAuthenticationProvider(credentials.Copy());
         }
 
         /// <summary>
         /// Dispose
         /// </summary>
-        public void Dispose()
+        public virtual void Dispose()
         {
             _disposing = true;
-            _apiCredentials?.Dispose();
-            AuthenticationProvider?.Credentials?.Dispose();
         }
     }
 }

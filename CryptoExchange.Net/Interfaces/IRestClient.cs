@@ -1,6 +1,5 @@
 ﻿using System;
-using CryptoExchange.Net.Authentication;
-using CryptoExchange.Net.Objects;
+using CryptoExchange.Net.Objects.Options;
 
 namespace CryptoExchange.Net.Interfaces
 {
@@ -10,9 +9,9 @@ namespace CryptoExchange.Net.Interfaces
     public interface IRestClient: IDisposable
     {
         /// <summary>
-        /// The factory for creating requests. Used for unit testing
+        /// The options provided for this client
         /// </summary>
-        IRequestFactory RequestFactory { get; set; }
+        ExchangeOptions ClientOptions { get; }
 
         /// <summary>
         /// The total amount of requests made with this client
@@ -20,14 +19,8 @@ namespace CryptoExchange.Net.Interfaces
         int TotalRequestsMade { get; }
 
         /// <summary>
-        /// The options provided for this client
+        /// The exchange name
         /// </summary>
-        BaseRestClientOptions ClientOptions { get; }
-
-        /// <summary>
-        /// Set the API credentials for this client. All Api clients in this client will use the new credentials, regardless of earlier set options.
-        /// </summary>
-        /// <param name="credentials">The credentials to set</param>
-        void SetApiCredentials(ApiCredentials credentials);
+        string Exchange { get; }
     }
 }
